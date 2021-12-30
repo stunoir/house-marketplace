@@ -63,7 +63,7 @@ function CreateListing() {
   }, [isMounted])
 
   const onSubmit = (e) => {
-    e.prevenDefault()
+    e.preventDefault()
 
     setLoading(true)
 
