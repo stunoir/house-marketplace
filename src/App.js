@@ -11,6 +11,8 @@ import SignIn from './pages/SignIn'
 import SignUp from './pages/SignUp'
 import Category from './pages/Category'
 import CreateListing from './pages/CreateListing'
+import Listing from './pages/Listing'
+import Contact from './pages/Contact'
 
 function App() {
   return (
@@ -20,6 +22,8 @@ function App() {
           <Route path='/' element={<Explore></Explore>}></Route>
           <Route path='/offers' element={<Offers></Offers>}></Route>
           <Route path='/category/:categoryName' element={<Category></Category>}></Route>
+          <Route path='/category/:categoryName/:listingId' element={<Listing></Listing>}></Route>
+          <Route path='/contact/:landlordId' element={<Contact></Contact>}></Route>
           <Route path='/profile' element={<PrivateRoute />}>
             <Route path='/profile' element={<Profile />} />
           </Route>
