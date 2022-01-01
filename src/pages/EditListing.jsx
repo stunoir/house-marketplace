@@ -1,18 +1,18 @@
 import { useState, useEffect, useRef } from 'react'
 import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore'
+import { doc, updateDoc, getDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase.config'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { v4 as uuidv4 } from 'uuid'
 import Spinner from '../components/Spinner'
 
-function CreateListing() {
+function EditListing() {
   // eslint-disable-next-line
   const [geolocationEnabled, setGeolocationEnabled] = useState(false)
   const [loading, setLoading] = useState(false)
-
+  const [listing, setListing] = useState(false)
   const [formData, setFormData] = useState({
     type: 'rent',
     name: '',
@@ -47,8 +47,37 @@ function CreateListing() {
 
   const auth = getAuth()
   const navigate = useNavigate()
+  const params = useParams()
   const isMounted = useRef(true)
 
+  // redirect if listing is not the users
+  useEffect(() => {
+    if (listing && listing.userRef !== auth.currentUser.uid) {
+      toast.error('You can not edit this listing')
+      navigate('/')
+    }
+  })
+
+  // fetch listing we need to edit
+  useEffect(() => {
+    setLoading(true)
+    const fetchListing = async () => {
+      const docRef = doc(db, 'listings', params.listingId)
+      const docSnap = await getDoc(docRef)
+      if (docSnap.exists()) {
+        setListing(docSnap.data())
+        setFormData({ ...docSnap.data(), address: docSnap.data().location })
+        setLoading(false)
+      } else {
+        navigate('/')
+        toast.error('The listing does not exist')
+      }
+    }
+
+    fetchListing()
+  }, [params.listingId, navigate])
+
+  // sets userRef to logged in user
   useEffect(() => {
     if (isMounted) {
       onAuthStateChanged(auth, (user) => {
@@ -63,7 +92,7 @@ function CreateListing() {
     return () => {
       isMounted.current = false
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
   }, [isMounted])
 
   const onSubmit = async (e) => {
@@ -73,7 +102,7 @@ function CreateListing() {
 
     if (discountedPrice >= regularPrice) {
       setLoading(false)
-      toast.error('Discounted price needs to be less than the regular price')
+      toast.error('Discounted price needs to be less than regular price')
       return
     }
 
@@ -100,7 +129,7 @@ function CreateListing() {
 
       if (location === undefined || location.includes('undefined')) {
         setLoading(false)
-        toast.error('Please enter a real address')
+        toast.error('Please enter a correct address')
         return
       }
     } else {
@@ -108,7 +137,7 @@ function CreateListing() {
       geolocation.lng = longitude
     }
 
-    // store image in firebase
+    // store image in firebase storage
     const storeImage = async (image) => {
       return new Promise((resolve, reject) => {
         const storage = getStorage()
@@ -122,13 +151,13 @@ function CreateListing() {
           'state_changed',
           (snapshot) => {
             const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100
-            console.log('upload is ' + progress + '% done')
+            console.log('Upload is ' + progress + '% done')
             switch (snapshot.state) {
               case 'paused':
-                console.log('upload is paused')
+                console.log('Upload is paused')
                 break
               case 'running':
-                console.log('upload is running')
+                console.log('Upload is running')
                 break
               default:
                 break
@@ -146,10 +175,9 @@ function CreateListing() {
       })
     }
 
-    // upload the images to storage
     const imageUrls = await Promise.all([...images].map((image) => storeImage(image))).catch(() => {
       setLoading(false)
-      toast.error('Sorry, images were not uploaded')
+      toast.error('Images not uploaded')
       return
     })
 
@@ -167,12 +195,11 @@ function CreateListing() {
     delete formDataCopy.address
     !formDataCopy.offer && delete formDataCopy.discountedPrice
 
-    // save to the db
-    const docRef = await addDoc(collection(db, 'listings'), formDataCopy)
-
-    // notify use and nav to the new listing
+    // update the listing
+    const docRef = doc(db, 'listings', params.listingId)
+    await updateDoc(docRef, formDataCopy)
     setLoading(false)
-    toast.success('The listing has been saved')
+    toast.success('Listing saved')
     navigate(`/category/${formDataCopy.type}/${docRef.id}`)
   }
 
@@ -182,7 +209,6 @@ function CreateListing() {
     if (e.target.value === 'true') {
       boolean = true
     }
-
     if (e.target.value === 'false') {
       boolean = false
     }
@@ -211,8 +237,9 @@ function CreateListing() {
   return (
     <div className='profile'>
       <header>
-        <p className='pageHeader'>Create a Listing</p>
+        <p className='pageHeader'>Edit Listing</p>
       </header>
+
       <main>
         <form onSubmit={onSubmit}>
           <label className='formLabel'>Sell / Rent</label>
@@ -237,9 +264,7 @@ function CreateListing() {
             </button>
           </div>
 
-          <label htmlFor='name' className='formLabel'>
-            Name
-          </label>
+          <label className='formLabel'>Name</label>
           <input
             className='formInputName'
             type='text'
@@ -253,9 +278,7 @@ function CreateListing() {
 
           <div className='formRooms flex'>
             <div>
-              <label htmlFor='bedrooms' className='formLabel'>
-                Bedrooms
-              </label>
+              <label className='formLabel'>Bedrooms</label>
               <input
                 className='formInputSmall'
                 type='number'
@@ -268,9 +291,7 @@ function CreateListing() {
               />
             </div>
             <div>
-              <label htmlFor='bathrooms' className='formLabel'>
-                Bathrooms
-              </label>
+              <label className='formLabel'>Bathrooms</label>
               <input
                 className='formInputSmall'
                 type='number'
@@ -284,9 +305,7 @@ function CreateListing() {
             </div>
           </div>
 
-          <label htmlFor='parking' className='formLabel'>
-            Parking spot
-          </label>
+          <label className='formLabel'>Parking spot</label>
           <div className='formButtons'>
             <button
               className={parking ? 'formButtonActive' : 'formButton'}
@@ -310,9 +329,7 @@ function CreateListing() {
             </button>
           </div>
 
-          <label htmlFor='furnished' className='formLabel'>
-            Furnished
-          </label>
+          <label className='formLabel'>Furnished</label>
           <div className='formButtons'>
             <button
               className={furnished ? 'formButtonActive' : 'formButton'}
@@ -334,9 +351,7 @@ function CreateListing() {
             </button>
           </div>
 
-          <label htmlFor='address' className='formLabel'>
-            Address
-          </label>
+          <label className='formLabel'>Address</label>
           <textarea
             className='formInputAddress'
             type='text'
@@ -349,9 +364,7 @@ function CreateListing() {
           {!geolocationEnabled && (
             <div className='formLatLng flex'>
               <div>
-                <label htmlFor='latitude' className='formLabel'>
-                  Latitude
-                </label>
+                <label className='formLabel'>Latitude</label>
                 <input
                   className='formInputSmall'
                   type='number'
@@ -362,9 +375,7 @@ function CreateListing() {
                 />
               </div>
               <div>
-                <label htmlFor='longitude' className='formLabel'>
-                  Longitude
-                </label>
+                <label className='formLabel'>Longitude</label>
                 <input
                   className='formInputSmall'
                   type='number'
@@ -377,9 +388,7 @@ function CreateListing() {
             </div>
           )}
 
-          <label htmlFor='offer' className='formLabel'>
-            Offer
-          </label>
+          <label className='formLabel'>Offer</label>
           <div className='formButtons'>
             <button
               className={offer ? 'formButtonActive' : 'formButton'}
@@ -401,9 +410,7 @@ function CreateListing() {
             </button>
           </div>
 
-          <label htmlFor='regularPrice' className='formLabel'>
-            Regular Price
-          </label>
+          <label className='formLabel'>Regular Price</label>
           <div className='formPriceDiv'>
             <input
               className='formInputSmall'
@@ -420,9 +427,7 @@ function CreateListing() {
 
           {offer && (
             <>
-              <label htmlFor='discountedPrice' className='formLabel'>
-                Discounted Price
-              </label>
+              <label className='formLabel'>Discounted Price</label>
               <input
                 className='formInputSmall'
                 type='number'
@@ -436,9 +441,7 @@ function CreateListing() {
             </>
           )}
 
-          <label htmlFor='images' className='formLabel'>
-            Images
-          </label>
+          <label className='formLabel'>Images</label>
           <p className='imagesInfo'>The first image will be the cover (max 6).</p>
           <input
             className='formInputFile'
@@ -451,7 +454,7 @@ function CreateListing() {
             required
           />
           <button type='submit' className='primaryButton createListingButton'>
-            Create Listing
+            Edit Listing
           </button>
         </form>
       </main>
@@ -459,4 +462,4 @@ function CreateListing() {
   )
 }
 
-export default CreateListing
+export default EditListing
